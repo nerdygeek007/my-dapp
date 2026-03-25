@@ -72,7 +72,13 @@ export default function Home() {
     try {
       const saved = localStorage.getItem('dsi_rpg_save');
       if (saved) {
-        setStats(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        setStats(prev => ({
+          ...prev,
+          ...parsed,
+          unlockedAvatars: parsed.unlockedAvatars || ["default"],
+          activeAvatar: parsed.activeAvatar || "default"
+        }));
       }
     } catch (e) {
         console.error("Failed to load save file.");
