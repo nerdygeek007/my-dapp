@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { AvatarRenderer, AvatarTraits } from "../components/AvatarRenderer";
 
 // Mock Data structure reflecting our Rust Stylus Contract
 type CharacterClass = "Novice" | "Warrior" | "Mage" | "Rogue";
@@ -10,8 +11,8 @@ export interface AvatarNFT {
   baseType: string;
   name: string;
   powerRating: number;
-  bgGradient: string;
-  emoji: string;
+  traits: AvatarTraits;
+  isMythic: boolean;
 }
 
 interface CharacterStats {
@@ -89,14 +90,41 @@ export default function Home() {
         
         // Backwards compatibility migration
         let newOwnedAvatars = parsed.ownedAvatars || [];
+        
+        // Migrate recent owned avatars that pre-date the SVG traits
+        newOwnedAvatars = newOwnedAvatars.map((nft: any) => {
+            if (!nft.traits || nft.traits.baseColor) {
+                return {
+                    ...nft,
+                    baseType: nft.baseType || "shadow_assassin",
+                    traits: {
+                        background: nft.bgGradient || nft.traits?.background || "from-gray-800 to-black",
+                        primaryColor: nft.traits?.baseColor || "#9ca3af",
+                        secondaryColor: "#ffffff",
+                        headpiece: "none",
+                        auraType: "none",
+                        weapon: "none",
+                    },
+                    isMythic: false
+                };
+            }
+            return nft;
+        });
+
         if (parsed.unlockedAvatars && newOwnedAvatars.length === 0) {
             newOwnedAvatars = parsed.unlockedAvatars.filter((a: string) => a !== "default").map((a: string, i: number) => ({
                 id: `legacy-${i}`,
                 baseType: a,
                 name: `${a.toUpperCase()} Legacy`,
                 powerRating: 100,
-                bgGradient: "from-gray-600 to-black",
-                emoji: "👤",
+                traits: {
+                    background: "from-gray-600 to-black",
+                    baseColor: "#9ca3af",
+                    eyeType: "void",
+                    auraType: "none",
+                    accessory: "none",
+                },
+                isMythic: false
             }));
         }
 
@@ -189,6 +217,36 @@ export default function Home() {
       }
     } else {
       alert("Please install MetaMask or a compatible Web3 wallet!");
+    }
+  };
+
+  const mintToWallet = async (nftName: string) => {
+    if (!walletAddress) {
+        alert("Please connect your Web3 Wallet first!");
+        return;
+    }
+    try {
+        addLog(`Requesting Wallet Signature to Mint ${nftName}...`);
+        const eth = (window as any).ethereum;
+        // Mocking an on-chain zero-value mint transaction
+        const txHash = await eth.request({
+            method: 'eth_sendTransaction',
+            params: [{
+                from: walletAddress,
+                to: walletAddress, // self transfer as a placeholder
+                value: '0x0',
+                data: '0xdeadbeef' // placeholder payload
+            }]
+        });
+        addLog(`✅ Successfully Minted to Wallet! TX: ${txHash.substring(0, 8)}...`);
+        alert(`Transaction Sent! \nHash: ${txHash}`);
+    } catch (e: any) {
+        if (e.code === 4001) {
+            addLog(`Minting rejected by user.`);
+        } else {
+            console.error("Minting failed", e);
+            addLog(`Minting transaction failed.`);
+        }
     }
   };
 
@@ -450,47 +508,64 @@ export default function Home() {
         return;
     }
 
-    // Success! Procedurally Generate a Unique NFT Trait System
+    // Success! Procedurally Generate a Unique Vector Trait System
     const rand = Math.random();
     const isMythic = rand > 0.95;
     const isRare = rand > 0.7 && !isMythic;
     
-    // Massive Trait Matrix for "Pudgy Penguins" style visual uniqueness
+    // Web3 Layer Matrix
     const backgrounds = [
-        "from-slate-800 to-black border-slate-700",
-        "from-zinc-900 to-stone-800 border-zinc-600",
-        "from-neutral-800 to-black border-neutral-600",
-        "from-red-950 to-black border-red-900",
-        "from-blue-950 to-slate-900 border-blue-900",
-        "from-emerald-950 to-black border-emerald-900",
-        "from-purple-950 to-black border-purple-900",
-        "from-orange-950 to-stone-900 border-orange-900"
+        "from-slate-800 to-black",
+        "from-zinc-900 to-stone-800",
+        "from-neutral-800 to-black",
+        "from-red-950 to-black",
+        "from-blue-950 to-slate-900",
+        "from-emerald-950 to-black",
+        "from-purple-950 to-black",
+        "from-orange-950 to-stone-900"
     ];
     
-    const accessories = ["", "🔥", "✨", "⚡", "❄️", "🌪️", "🦇", "💀", "👁️", "🩸", "🔮", "🛡️", "⚔️", "👑", "🎩", "🕶️", "💫", "🎯"];
-    
-    const bases = {
-      shadow_assassin: ["🥷", "👤", "🧛", "🧟", "🎭", "🗡️", "🕷️"],
-      arch_mage: ["🧙‍♂️", "🧙‍♀️", "🧝‍♂️", "🧞‍♂️", "🦉", "🧿", "🌀"],
-      dragon_slayer: ["🐉", "🦖", "🦕", "🐊", "🐲", "🌋", "☄️"]
-    };
+    // Themed Category Pools
+    let primaryPool = ["#64748b"];
+    let secPool = ["#ffffff"];
+    let headPool = ['none'];
+    let wepPool = ['none'];
 
-    const classBases = bases[q.rewardAvatar as keyof typeof bases] || bases.shadow_assassin;
-    
-    // Pick random traits
-    const bgClass = backgrounds[Math.floor(Math.random() * backgrounds.length)];
-    const baseEmoji = classBases[Math.floor(Math.random() * classBases.length)];
-    const accessoryEmoji = accessories[Math.floor(Math.random() * accessories.length)];
-
-    let bgGrad = bgClass;
-    if (isMythic) {
-        if (q.rewardAvatar === "shadow_assassin") bgGrad = "from-fuchsia-600 via-purple-900 to-black border-fuchsia-400 shadow-[0_0_20px_rgba(192,38,211,0.5)]";
-        if (q.rewardAvatar === "arch_mage") bgGrad = "from-cyan-400 via-blue-700 to-indigo-900 border-cyan-300 shadow-[0_0_20px_rgba(34,211,238,0.5)]";
-        if (q.rewardAvatar === "dragon_slayer") bgGrad = "from-yellow-400 via-orange-600 to-red-900 border-yellow-300 shadow-[0_0_20px_rgba(250,204,21,0.5)]";
+    if (q.rewardAvatar === "shadow_assassin") {
+        primaryPool = ["#1e293b", "#334155", "#475569", "#581c87", "#7f1d1d"];
+        secPool = ["#111827", "#f87171", "#c084fc", "#e2e8f0"];
+        headPool = ['hood', 'mask', 'mask', 'none']; 
+        wepPool = ['shuriken', 'shuriken', 'kunai', 'none'];
+    } else if (q.rewardAvatar === "arch_mage") {
+        primaryPool = ["#1e3a8a", "#1d4ed8", "#4f46e5", "#7e22ce", "#0369a1"];
+        secPool = ["#38bdf8", "#fbbf24", "#e879f9", "#818cf8"];
+        headPool = ['hood', 'hood', 'crown', 'none'];
+        wepPool = ['staff', 'staff', 'spellbook', 'none'];
+    } else if (q.rewardAvatar === "dragon_slayer") {
+        primaryPool = ["#7f1d1d", "#b91c1c", "#9a3412", "#064e3b", "#b45309"];
+        secPool = ["#facc15", "#fca5a5", "#fb923c", "#fcd34d"];
+        headPool = ['helmet', 'horns', 'horns', 'none']; 
+        wepPool = ['sword', 'sword', 'axe', 'none'];
     }
 
-    let emoji = `${baseEmoji}${accessoryEmoji}`;
-    if (isMythic) emoji = `✨${baseEmoji}${accessoryEmoji}✨`;
+    const auraTypes: ('smooth' | 'spiked' | 'runic' | 'none')[] = ['smooth', 'spiked', 'runic', 'none'];
+
+    // Roll Traits
+    let bgGrad = backgrounds[Math.floor(Math.random() * backgrounds.length)];
+    if (isMythic) {
+        if (q.rewardAvatar === "shadow_assassin") bgGrad = "from-fuchsia-600 via-purple-900 to-black";
+        if (q.rewardAvatar === "arch_mage") bgGrad = "from-cyan-400 via-blue-700 to-indigo-900";
+        if (q.rewardAvatar === "dragon_slayer") bgGrad = "from-yellow-400 via-orange-600 to-red-900";
+    }
+
+    const traitsRolled: AvatarTraits = {
+        background: bgGrad,
+        primaryColor: primaryPool[Math.floor(Math.random() * primaryPool.length)],
+        secondaryColor: secPool[Math.floor(Math.random() * secPool.length)],
+        headpiece: headPool[Math.floor(Math.random() * headPool.length)],
+        auraType: isMythic ? 'runic' : auraTypes[Math.floor(Math.random() * auraTypes.length)],
+        weapon: wepPool[Math.floor(Math.random() * wepPool.length)]
+    };
 
     // Power Rating maps to your precise Effective Stat combination at the exact moment of minting!
     const basePower = effStat * 2.5 + stats.level * 10;
@@ -502,8 +577,8 @@ export default function Home() {
         baseType: q.rewardAvatar,
         name: `${q.rewardName} #${Math.floor(Math.random()*9000 + 1000)}`,
         powerRating: powerScore,
-        bgGradient: bgGrad,
-        emoji: emoji
+        traits: traitsRolled,
+        isMythic: isMythic
     };
 
     setStats(prev => {
@@ -542,30 +617,24 @@ export default function Home() {
     );
   };
 
-  const getAvatarGradient = () => {
+  const renderDashboardAvatar = () => {
     if (stats.activeAvatarId !== "default") {
         const found = stats.ownedAvatars.find(a => a.id === stats.activeAvatarId);
-        if (found) return `${found.bgGradient} shadow-lg`;
+        if (found) {
+            return <AvatarRenderer baseType={found.baseType} traits={found.traits} size={128} isMythic={found.isMythic} className="mb-6" />;
+        }
     }
 
-    switch (stats.charClass) {
-      case "Warrior": return "from-red-500 to-orange-500 shadow-red-500/50 border-forge-bg";
-      case "Mage": return "from-blue-500 to-purple-500 shadow-blue-500/50 border-forge-bg";
-      case "Rogue": return "from-green-500 to-emerald-500 shadow-emerald-500/50 border-forge-bg";
-      default: return "from-gray-400 to-slate-400 shadow-slate-500/50 border-forge-bg";
-    }
-  };
-
-  const getAvatarEmoji = () => {
-    if (stats.activeAvatarId !== "default") {
-        const found = stats.ownedAvatars.find(a => a.id === stats.activeAvatarId);
-        if (found) return found.emoji;
-    }
-    
-    if (stats.charClass === "Warrior") return "⚔️";
-    if (stats.charClass === "Mage") return "🔮";
-    if (stats.charClass === "Rogue") return "🗡️";
-    return "👤";
+    // Default Fallback
+    const fallbackTraits: AvatarTraits = {
+        background: "from-gray-800 to-black",
+        primaryColor: stats.charClass === "Warrior" ? "#ef4444" : stats.charClass === "Mage" ? "#3b82f6" : stats.charClass === "Rogue" ? "#10b981" : "#6b7280",
+        secondaryColor: "#ffffff",
+        headpiece: "none",
+        weapon: "none",
+        auraType: "none"
+    };
+    return <AvatarRenderer baseType="default" traits={fallbackTraits} size={128} className="mb-6" />;
   };
 
   // ---------------- Main Render ----------------
@@ -669,11 +738,9 @@ export default function Home() {
                 {/* Avatar & Core Profile (Left Column) */}
                 <div className="lg:col-span-4 flex flex-col gap-6">
                     <div className="glass-panel p-6 rounded-2xl flex flex-col items-center">
-                    {/* Magic Avatar Circle */}
-                    <div className={`w-32 h-32 rounded-full mb-6 bg-gradient-to-br ${getAvatarGradient()} shadow-lg animate-float flex items-center justify-center border-4 relative`}>
-                        <span className="text-5xl opacity-90 drop-shadow-md">
-                          {getAvatarEmoji()}
-                        </span>
+                    {/* Core Generative Art Avatar */}
+                    <div className="flex flex-col items-center">
+                        {renderDashboardAvatar()}
                     </div>
                     
                     <h2 className="text-2xl font-bold text-white tracking-wide">Level {stats.level}</h2>
@@ -930,9 +997,9 @@ export default function Home() {
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             {stats.ownedAvatars.map((nft) => (
-                                <div key={nft.id} className={`p-4 border rounded-xl flex flex-col ${stats.activeAvatarId === nft.id ? 'border-accent-cyan bg-accent-cyan/10' : 'border-forge-border bg-forge-elevated hover:border-forge-text'}`}>
-                                    <div className={`w-16 h-16 rounded-full mb-4 bg-gradient-to-br ${nft.bgGradient} flex items-center justify-center mx-auto border-2`}>
-                                        <span className="text-2xl">{nft.emoji}</span>
+                                <div key={nft.id} className={`p-4 border rounded-xl flex flex-col ${stats.activeAvatarId === nft.id ? 'border-accent-cyan bg-accent-cyan/10' : 'border-forge-border bg-forge-elevated hover:border-forge-text'} transition-colors relative group`}>
+                                    <div className="mb-4 flex justify-center">
+                                        <AvatarRenderer baseType={nft.baseType} traits={nft.traits} size={100} isMythic={nft.isMythic} />
                                     </div>
                                     <div className="text-center mb-4 border-b border-forge-border pb-3">
                                         <h4 className="text-sm font-bold text-white leading-tight mb-1">{nft.name}</h4>
@@ -948,6 +1015,12 @@ export default function Home() {
                                                 EQUIP SOUL
                                             </button>
                                         )}
+                                        <button 
+                                            onClick={() => mintToWallet(nft.name)}
+                                            className="w-full py-2 mt-1 text-[10px] bg-gradient-to-r from-accent-purple to-accent-cyan text-white hover:opacity-80 rounded transition-all font-bold tracking-widest shadow-md flex items-center justify-center gap-2"
+                                        >
+                                            <span>📤</span> MINT TO WALLET
+                                        </button>
                                     </div>
                                 </div>
                             ))}
@@ -967,7 +1040,7 @@ export default function Home() {
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                         {QUESTS.map((q) => {
-                            const isCompleted = stats.unlockedAvatars.includes(q.rewardAvatar);
+                            const isCompleted = stats.ownedAvatars.some(a => a.baseType === q.rewardAvatar);
                             const effStat = getEffectiveStat(q.reqStat as any);
                             const meetsLevel = stats.level >= q.reqLevel;
                             const meetsStat = effStat >= q.reqStatAmount;
