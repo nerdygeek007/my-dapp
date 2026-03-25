@@ -61,6 +61,8 @@ sol! {
     error TransferToZero(uint256 token_id);
     // The receiver address refused to receive the specified token id
     error ReceiverRefused(address receiver, uint256 token_id, bytes4 returned);
+    // Token is Soulbound and cannot be transferred
+    error SoulboundToken(uint256 token_id);
 }
 
 /// Represents the ways methods may fail.
@@ -71,6 +73,7 @@ pub enum Erc721Error {
     NotApproved(NotApproved),
     TransferToZero(TransferToZero),
     ReceiverRefused(ReceiverRefused),
+    SoulboundToken(SoulboundToken),
 }
 
 // External interfaces
@@ -135,6 +138,11 @@ impl<T: Erc721Params> Erc721<T> {
         from: Address,
         to: Address,
     ) -> Result<(), Erc721Error> {
+        // SOULBOUND RESTRICTION: Block all transfers that are not mints or burns
+        if !from.is_zero() && !to.is_zero() {
+            return Err(Erc721Error::SoulboundToken(SoulboundToken { token_id }));
+        }
+
         let mut owner = self.owners.setter(token_id);
         let previous_owner = owner.get();
         if previous_owner != from {

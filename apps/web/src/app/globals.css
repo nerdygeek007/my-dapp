@@ -2,34 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
-    :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 255, 255, 255;
-  --background-end-rgb: 245, 245, 245;
+:root {
+  --background: #050508;
+  --foreground: #e4e4ef;
 }
 
-    
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --foreground-rgb: 255, 255, 255;
-        --background-start-rgb: 0, 0, 0;
-        --background-end-rgb: 0, 0, 0;
-      }
-    }
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  overflow-x: hidden;
+}
 
-    .dark {
-      --foreground-rgb: 255, 255, 255;
-      --background-start-rgb: 0, 0, 0;
-      --background-end-rgb: 0, 0, 0;
-    }
-    
+/* Magical Background Grid Overlay */
+.bg-grid-magic {
+  background-size: 40px 40px;
+  background-image: linear-gradient(to right, rgba(0, 212, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 212, 255, 0.05) 1px, transparent 1px);
+}
 
-    body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    rgb(var(--background-end-rgb))
-        )
-  rgb(var(--background-start-rgb));
+.glass-panel {
+  background: rgba(12, 12, 18, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 212, 255, 0.15);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+}
+
+.stat-bar-fill {
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.text-gradient {
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-image: linear-gradient(90deg, #00d4ff, #8b5cf6, #c026d3);
+}
+
+/* Shimmer Button Effect */
+.btn-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.btn-shimmer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transform: skewX(-20deg);
+  animation: btn-shine 3s infinite;
+}
+
+@keyframes btn-shine {
+  0% { left: -100% }
+  20% { left: 200% }
+  100% { left: 200% }
 }

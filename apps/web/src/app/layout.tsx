@@ -7,8 +7,8 @@ import { Providers } from './providers';
     const inter = Inter({ subsets: ['latin'] });
 
     export const metadata: Metadata = {
-      title: 'My DApp',
-      description: 'A Web3 application built with Cradle',
+      title: 'Dynamic Soulbound RPG',
+      description: 'An on-chain RPG built with Arbitrum Stylus and Next.js',
     };
 
     export default function RootLayout({
@@ -17,7 +17,7 @@ import { Providers } from './providers';
       children: React.ReactNode;
     }) {
       return (
-        <html lang="en" suppressHydrationWarning>
+        <html lang="en" className="dark" suppressHydrationWarning>
           <body className={inter.className}>
             <Providers>
               {children}
