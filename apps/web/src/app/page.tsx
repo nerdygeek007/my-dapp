@@ -93,17 +93,19 @@ export default function Home() {
         
         // Migrate recent owned avatars that pre-date the SVG traits
         newOwnedAvatars = newOwnedAvatars.map((nft: any) => {
-            if (!nft.traits || nft.traits.baseColor) {
+            if (!nft.traits || nft.traits.baseColor || !nft.traits.weather) {
                 return {
                     ...nft,
                     baseType: nft.baseType || "shadow_assassin",
                     traits: {
                         background: nft.bgGradient || nft.traits?.background || "from-gray-800 to-black",
-                        primaryColor: nft.traits?.baseColor || "#9ca3af",
-                        secondaryColor: "#ffffff",
+                        primaryColor: nft.traits?.primaryColor || nft.traits?.baseColor || "#9ca3af",
+                        secondaryColor: nft.traits?.secondaryColor || "#ffffff",
                         headpiece: "none",
                         auraType: "none",
                         weapon: "none",
+                        weather: "none",
+                        familiar: "none"
                     },
                     isMythic: false
                 };
@@ -226,26 +228,24 @@ export default function Home() {
         return;
     }
     try {
-        addLog(`Requesting Wallet Signature to Mint ${nftName}...`);
+        addLog(`Requesting Wallet Signature to Claim ${nftName}...`);
         const eth = (window as any).ethereum;
-        // Mocking an on-chain zero-value mint transaction
-        const txHash = await eth.request({
-            method: 'eth_sendTransaction',
-            params: [{
-                from: walletAddress,
-                to: walletAddress, // self transfer as a placeholder
-                value: '0x0',
-                data: '0xdeadbeef' // placeholder payload
-            }]
+        // Using personal_sign bypassing Gas/ETH requirements for the demo!
+        const msg = `0x${Buffer.from(`I authorize the minting of ${nftName} to my Dynamic Soulbound Collection.`, 'utf8').toString('hex')}`;
+        
+        const signature = await eth.request({
+            method: 'personal_sign',
+            params: [msg, walletAddress]
         });
-        addLog(`✅ Successfully Minted to Wallet! TX: ${txHash.substring(0, 8)}...`);
-        alert(`Transaction Sent! \nHash: ${txHash}`);
+        
+        addLog(`✅ Successfully Claimed Signature! Hash: ${signature.substring(0, 12)}...`);
+        alert(`Cryptographic Signature Claimed!\n${signature.substring(0, 30)}...`);
     } catch (e: any) {
         if (e.code === 4001) {
             addLog(`Minting rejected by user.`);
         } else {
             console.error("Minting failed", e);
-            addLog(`Minting transaction failed.`);
+            addLog(`Mint signature failed.`);
         }
     }
   };
@@ -530,32 +530,37 @@ export default function Home() {
     let secPool = ["#ffffff"];
     let headPool = ['none'];
     let wepPool = ['none'];
+    let famPool: ('wyvern' | 'wisp' | 'crow' | 'none')[] = ['none'];
 
     if (q.rewardAvatar === "shadow_assassin") {
         primaryPool = ["#1e293b", "#334155", "#475569", "#581c87", "#7f1d1d"];
         secPool = ["#111827", "#f87171", "#c084fc", "#e2e8f0"];
         headPool = ['hood', 'mask', 'mask', 'none']; 
         wepPool = ['shuriken', 'shuriken', 'kunai', 'none'];
+        famPool = ['crow', 'none', 'none'];
     } else if (q.rewardAvatar === "arch_mage") {
         primaryPool = ["#1e3a8a", "#1d4ed8", "#4f46e5", "#7e22ce", "#0369a1"];
         secPool = ["#38bdf8", "#fbbf24", "#e879f9", "#818cf8"];
         headPool = ['hood', 'hood', 'crown', 'none'];
         wepPool = ['staff', 'staff', 'spellbook', 'none'];
+        famPool = ['wisp', 'none', 'none'];
     } else if (q.rewardAvatar === "dragon_slayer") {
         primaryPool = ["#7f1d1d", "#b91c1c", "#9a3412", "#064e3b", "#b45309"];
         secPool = ["#facc15", "#fca5a5", "#fb923c", "#fcd34d"];
         headPool = ['helmet', 'horns', 'horns', 'none']; 
         wepPool = ['sword', 'sword', 'axe', 'none'];
+        famPool = ['wyvern', 'none', 'none'];
     }
 
     const auraTypes: ('smooth' | 'spiked' | 'runic' | 'none')[] = ['smooth', 'spiked', 'runic', 'none'];
+    const weatherTypes: ('rain' | 'snow' | 'embers' | 'none')[] = ['rain', 'snow', 'embers', 'none', 'none', 'none']; // Mostly none
 
     // Roll Traits
     let bgGrad = backgrounds[Math.floor(Math.random() * backgrounds.length)];
     if (isMythic) {
-        if (q.rewardAvatar === "shadow_assassin") bgGrad = "from-fuchsia-600 via-purple-900 to-black";
-        if (q.rewardAvatar === "arch_mage") bgGrad = "from-cyan-400 via-blue-700 to-indigo-900";
-        if (q.rewardAvatar === "dragon_slayer") bgGrad = "from-yellow-400 via-orange-600 to-red-900";
+        if (q.rewardAvatar === "shadow_assassin") { bgGrad = "from-fuchsia-600 via-purple-900 to-black"; }
+        if (q.rewardAvatar === "arch_mage") { bgGrad = "from-cyan-400 via-blue-700 to-indigo-900"; }
+        if (q.rewardAvatar === "dragon_slayer") { bgGrad = "from-yellow-400 via-orange-600 to-red-900"; }
     }
 
     const traitsRolled: AvatarTraits = {
@@ -564,7 +569,9 @@ export default function Home() {
         secondaryColor: secPool[Math.floor(Math.random() * secPool.length)],
         headpiece: headPool[Math.floor(Math.random() * headPool.length)],
         auraType: isMythic ? 'runic' : auraTypes[Math.floor(Math.random() * auraTypes.length)],
-        weapon: wepPool[Math.floor(Math.random() * wepPool.length)]
+        weapon: wepPool[Math.floor(Math.random() * wepPool.length)],
+        familiar: famPool[Math.floor(Math.random() * famPool.length)],
+        weather: isMythic ? 'embers' : weatherTypes[Math.floor(Math.random() * weatherTypes.length)]
     };
 
     // Power Rating maps to your precise Effective Stat combination at the exact moment of minting!
@@ -632,7 +639,9 @@ export default function Home() {
         secondaryColor: "#ffffff",
         headpiece: "none",
         weapon: "none",
-        auraType: "none"
+        auraType: "none",
+        weather: "none",
+        familiar: "none"
     };
     return <AvatarRenderer baseType="default" traits={fallbackTraits} size={128} className="mb-6" />;
   };
