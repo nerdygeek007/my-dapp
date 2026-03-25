@@ -5,6 +5,15 @@ import { useState, useEffect } from 'react';
 // Mock Data structure reflecting our Rust Stylus Contract
 type CharacterClass = "Novice" | "Warrior" | "Mage" | "Rogue";
 
+export interface AvatarNFT {
+  id: string;
+  baseType: string;
+  name: string;
+  powerRating: number;
+  bgGradient: string;
+  emoji: string;
+}
+
 interface CharacterStats {
   level: number;
   xp: number;
@@ -18,8 +27,8 @@ interface CharacterStats {
   inventory: number[];
   equippedWeapon: number | null;
   equippedArmor: number | null;
-  activeAvatar: string;
-  unlockedAvatars: string[];
+  activeAvatarId: string | "default";
+  ownedAvatars: AvatarNFT[];
 }
 
 // Global Item Database
@@ -44,8 +53,8 @@ const INITIAL_STATS: CharacterStats = {
   inventory: [],
   equippedWeapon: null,
   equippedArmor: null,
-  activeAvatar: "default",
-  unlockedAvatars: ["default"],
+  activeAvatarId: "default",
+  ownedAvatars: [],
 };
 
 const QUESTS = [
@@ -63,6 +72,10 @@ export default function Home() {
   const [isMinting, setIsMinting] = useState(false);
   const [currentView, setCurrentView] = useState<"dashboard" | "arena" | "collections" | "quests">("dashboard");
 
+  // Web3 State
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+
   // Arena State
   const [arenaLog, setArenaLog] = useState<string[]>([]);
   const [isFighting, setIsFighting] = useState(false);
@@ -73,11 +86,25 @@ export default function Home() {
       const saved = localStorage.getItem('dsi_rpg_save');
       if (saved) {
         const parsed = JSON.parse(saved);
+        
+        // Backwards compatibility migration
+        let newOwnedAvatars = parsed.ownedAvatars || [];
+        if (parsed.unlockedAvatars && newOwnedAvatars.length === 0) {
+            newOwnedAvatars = parsed.unlockedAvatars.filter((a: string) => a !== "default").map((a: string, i: number) => ({
+                id: `legacy-${i}`,
+                baseType: a,
+                name: `${a.toUpperCase()} Legacy`,
+                powerRating: 100,
+                bgGradient: "from-gray-600 to-black",
+                emoji: "👤",
+            }));
+        }
+
         setStats(prev => ({
           ...prev,
           ...parsed,
-          unlockedAvatars: parsed.unlockedAvatars || ["default"],
-          activeAvatar: parsed.activeAvatar || "default"
+          activeAvatarId: parsed.activeAvatarId || parsed.activeAvatar || "default",
+          ownedAvatars: newOwnedAvatars
         }));
       }
     } catch (e) {
@@ -107,6 +134,65 @@ export default function Home() {
   const addLog = (msg: string) => {
     setActionLog(prev => [msg, ...prev].slice(0, 5));
   };
+
+  // --- WEB3 CONNECTION LOGIC ---
+  const connectWallet = async () => {
+    if (typeof window !== 'undefined' && 'ethereum' in window) {
+      try {
+        setIsConnecting(true);
+        const eth = (window as any).ethereum;
+        const accounts = await eth.request({ method: 'eth_requestAccounts' });
+        
+        // Force Switch to Arbitrum Sepolia
+        const arbitrumSepoliaChainId = '0x66eee'; // 421614
+        try {
+          await eth.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: arbitrumSepoliaChainId }],
+          });
+        } catch (switchError: any) {
+          // 4902 error code implies network is not added to wallet
+          if (switchError.code === 4902) {
+            try {
+              await eth.request({
+                method: 'wallet_addEthereumChain',
+                params: [
+                  {
+                    chainId: arbitrumSepoliaChainId,
+                    chainName: 'Arbitrum Sepolia Testnet',
+                    rpcUrls: ['https://sepolia-rollup.arbitrum.io/rpc'],
+                    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+                    blockExplorerUrls: ['https://sepolia.arbiscan.io/']
+                  },
+                ],
+              });
+            } catch (addError) {
+              console.error("Failed to add network:", addError);
+              addLog("Failed to add Arbitrum Sepolia network to wallet.");
+              setIsConnecting(false);
+              return;
+            }
+          } else {
+             console.error("Failed to switch network:", switchError);
+             addLog("Failed to switch to Arbitrum Sepolia.");
+             setIsConnecting(false);
+             return;
+          }
+        }
+        
+        setWalletAddress(accounts[0]);
+        addLog(`Web3 Connected: ${accounts[0].substring(0,6)}...${accounts[0].substring(38)}`);
+      } catch (error) {
+        console.error("Wallet connection error:", error);
+      } finally {
+        setIsConnecting(false);
+      }
+    } else {
+      alert("Please install MetaMask or a compatible Web3 wallet!");
+    }
+  };
+
+  // -----------------------------
 
   const mintIdentity = () => {
     setIsMinting(true);
@@ -347,6 +433,11 @@ export default function Home() {
     const q = QUESTS.find(x => x.id === questId);
     if (!q) return;
 
+    if (stats.stamina < 50) {
+        addLog(`Not enough stamina for quest! (Cost: 50)`);
+        return;
+    }
+
     if (stats.level < q.reqLevel) {
         addLog(`Quest Failed: Requires Level ${q.reqLevel}`);
         return;
@@ -359,24 +450,75 @@ export default function Home() {
         return;
     }
 
-    // Success! Unlock Avatar
+    // Success! Procedurally Generate a Unique NFT Trait System
+    const rand = Math.random();
+    const isMythic = rand > 0.95;
+    const isRare = rand > 0.7 && !isMythic;
+    
+    // Massive Trait Matrix for "Pudgy Penguins" style visual uniqueness
+    const backgrounds = [
+        "from-slate-800 to-black border-slate-700",
+        "from-zinc-900 to-stone-800 border-zinc-600",
+        "from-neutral-800 to-black border-neutral-600",
+        "from-red-950 to-black border-red-900",
+        "from-blue-950 to-slate-900 border-blue-900",
+        "from-emerald-950 to-black border-emerald-900",
+        "from-purple-950 to-black border-purple-900",
+        "from-orange-950 to-stone-900 border-orange-900"
+    ];
+    
+    const accessories = ["", "🔥", "✨", "⚡", "❄️", "🌪️", "🦇", "💀", "👁️", "🩸", "🔮", "🛡️", "⚔️", "👑", "🎩", "🕶️", "💫", "🎯"];
+    
+    const bases = {
+      shadow_assassin: ["🥷", "👤", "🧛", "🧟", "🎭", "🗡️", "🕷️"],
+      arch_mage: ["🧙‍♂️", "🧙‍♀️", "🧝‍♂️", "🧞‍♂️", "🦉", "🧿", "🌀"],
+      dragon_slayer: ["🐉", "🦖", "🦕", "🐊", "🐲", "🌋", "☄️"]
+    };
+
+    const classBases = bases[q.rewardAvatar as keyof typeof bases] || bases.shadow_assassin;
+    
+    // Pick random traits
+    const bgClass = backgrounds[Math.floor(Math.random() * backgrounds.length)];
+    const baseEmoji = classBases[Math.floor(Math.random() * classBases.length)];
+    const accessoryEmoji = accessories[Math.floor(Math.random() * accessories.length)];
+
+    let bgGrad = bgClass;
+    if (isMythic) {
+        if (q.rewardAvatar === "shadow_assassin") bgGrad = "from-fuchsia-600 via-purple-900 to-black border-fuchsia-400 shadow-[0_0_20px_rgba(192,38,211,0.5)]";
+        if (q.rewardAvatar === "arch_mage") bgGrad = "from-cyan-400 via-blue-700 to-indigo-900 border-cyan-300 shadow-[0_0_20px_rgba(34,211,238,0.5)]";
+        if (q.rewardAvatar === "dragon_slayer") bgGrad = "from-yellow-400 via-orange-600 to-red-900 border-yellow-300 shadow-[0_0_20px_rgba(250,204,21,0.5)]";
+    }
+
+    let emoji = `${baseEmoji}${accessoryEmoji}`;
+    if (isMythic) emoji = `✨${baseEmoji}${accessoryEmoji}✨`;
+
+    // Power Rating maps to your precise Effective Stat combination at the exact moment of minting!
+    const basePower = effStat * 2.5 + stats.level * 10;
+    const rarityMultiplier = isMythic ? 2.5 : isRare ? 1.5 : 1.0;
+    const powerScore = Math.floor((basePower + Math.random() * 50) * rarityMultiplier);
+
+    const newNFT: AvatarNFT = {
+        id: `nft-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        baseType: q.rewardAvatar,
+        name: `${q.rewardName} #${Math.floor(Math.random()*9000 + 1000)}`,
+        powerRating: powerScore,
+        bgGradient: bgGrad,
+        emoji: emoji
+    };
+
     setStats(prev => {
-        if (prev.unlockedAvatars.includes(q.rewardAvatar)) {
-            addLog(`You have already completed ${q.name}!`);
-            return prev;
-        }
-        addLog(`🏆 QUEST COMPLETE: ${q.name}! Unlocked Avatar: ${q.rewardName}`);
+        addLog(`🏆 QUEST COMPLETE! MINTED UNIQUE NFT: ${newNFT.name} (Power: ${newNFT.powerRating})`);
         return {
             ...prev,
-            unlockedAvatars: [...prev.unlockedAvatars, q.rewardAvatar],
-            activeAvatar: q.rewardAvatar
+            stamina: prev.stamina - 50,
+            ownedAvatars: [newNFT, ...prev.ownedAvatars],
         };
     });
   };
 
   const equipAvatar = (avatarId: string) => {
-    setStats(prev => ({ ...prev, activeAvatar: avatarId }));
-    addLog(`Equipped new Avatar Soul!`);
+    setStats(prev => ({ ...prev, activeAvatarId: avatarId }));
+    addLog(`Equipped procedural Avatar Soul!`);
   };
 
   // ---------------- Render Helpers ----------------
@@ -401,9 +543,10 @@ export default function Home() {
   };
 
   const getAvatarGradient = () => {
-    if (stats.activeAvatar === "shadow_assassin") return "from-purple-900 to-black shadow-purple-900/80 border-purple-500";
-    if (stats.activeAvatar === "arch_mage") return "from-indigo-600 to-cyan-500 shadow-cyan-500/80 border-cyan-300";
-    if (stats.activeAvatar === "dragon_slayer") return "from-red-700 to-orange-900 shadow-orange-600/80 border-orange-500";
+    if (stats.activeAvatarId !== "default") {
+        const found = stats.ownedAvatars.find(a => a.id === stats.activeAvatarId);
+        if (found) return `${found.bgGradient} shadow-lg`;
+    }
 
     switch (stats.charClass) {
       case "Warrior": return "from-red-500 to-orange-500 shadow-red-500/50 border-forge-bg";
@@ -414,9 +557,10 @@ export default function Home() {
   };
 
   const getAvatarEmoji = () => {
-    if (stats.activeAvatar === "shadow_assassin") return "🥷";
-    if (stats.activeAvatar === "arch_mage") return "🧙‍♂️";
-    if (stats.activeAvatar === "dragon_slayer") return "🐉";
+    if (stats.activeAvatarId !== "default") {
+        const found = stats.ownedAvatars.find(a => a.id === stats.activeAvatarId);
+        if (found) return found.emoji;
+    }
     
     if (stats.charClass === "Warrior") return "⚔️";
     if (stats.charClass === "Mage") return "🔮";
@@ -430,19 +574,40 @@ export default function Home() {
       
       {!stats.minted ? (
         // Landing / Mint UI
-        <div className="glass-panel p-10 rounded-2xl max-w-lg w-full text-center animate-glow">
+        <div className="glass-panel p-10 rounded-2xl max-w-lg w-full text-center animate-glow relative overflow-hidden">
+          
+          {/* Stylus Background accent */}
+          <div className="absolute top-0 right-0 w-32 h-32 bg-accent-cyan/10 blur-3xl rounded-full translate-x-12 -translate-y-12"></div>
+          
           <h1 className="text-4xl font-bold mb-4 font-sans text-gradient">Dynamic Soulbound Identity</h1>
           <p className="text-forge-muted mb-8 text-sm">
-            Forge your on-chain RPG identity powered by Arbitrum Stylus. 
+            Forge your on-chain RPG identity powered by Arbitrum Stylus (Sepolia). 
             Level up, train stats, and evolve your class natively on-chain.
           </p>
-          <button 
-            onClick={mintIdentity}
-            disabled={isMinting}
-            className="w-full py-4 rounded-xl font-bold font-mono tracking-widest text-forge-bg bg-accent-cyan hover:bg-white transition-all btn-shimmer disabled:opacity-50"
-          >
-            {isMinting ? "AWAKENING SOUL..." : "MINT IDENTITY"}
-          </button>
+          
+          {walletAddress ? (
+            <div className="flex flex-col gap-4">
+              <div className="text-xs font-mono text-accent-cyan bg-accent-cyan/10 p-2 rounded border border-accent-cyan/20">
+                Connected: {walletAddress.substring(0,6)}...{walletAddress.substring(38)} (Arbitrum Sepolia)
+              </div>
+              <button 
+                onClick={mintIdentity}
+                disabled={isMinting}
+                className="w-full py-4 rounded-xl font-bold font-mono tracking-widest text-forge-bg bg-accent-cyan hover:bg-white transition-all btn-shimmer disabled:opacity-50 shadow-[0_0_20px_rgba(0,212,255,0.4)]"
+              >
+                {isMinting ? "AWAKENING SOUL..." : "MINT SOULBOUND IDENTITY"}
+              </button>
+            </div>
+          ) : (
+            <button 
+                onClick={connectWallet}
+                disabled={isConnecting}
+                className="w-full py-4 rounded-xl font-bold font-mono tracking-widest text-white bg-forge-border hover:bg-forge-text transition-all disabled:opacity-50"
+              >
+                {isConnecting ? "CONNECTING..." : "CONNECT WEB3 WALLET"}
+            </button>
+          )}
+
         </div>
       ) : (
         // The RPG Dashboard HUD
@@ -477,6 +642,15 @@ export default function Home() {
                  </button>
              </div>
              <div className="text-right flex items-center gap-4">
+                 <div className="flex flex-col text-right">
+                     <span className="text-[10px] font-mono text-forge-muted tracking-widest">NETWORK</span>
+                     {walletAddress ? (
+                        <span className="font-bold text-accent-cyan font-mono text-xs">ARB SEPOLIA</span>
+                     ) : (
+                        <button onClick={connectWallet} className="font-bold text-accent-cyan hover:text-white font-mono text-xs transition-colors">CONNECT WALLET</button>
+                     )}
+                 </div>
+                 <div className="h-8 w-1 bg-forge-border"></div>
                  <div className="flex flex-col text-right">
                      <span className="text-[10px] font-mono text-forge-muted tracking-widest">STAMINA</span>
                      <span className="font-bold text-accent-lime font-mono">{stats.stamina}/100</span>
@@ -737,6 +911,48 @@ export default function Home() {
                             })}
                         </div>
                     )}
+
+                    {/* Procedural Avatar NFTs Section */}
+                    <div className="flex justify-between items-center mb-6 border-b border-forge-border pb-4 mt-8">
+                        <div>
+                            <h2 className="text-2xl font-bold font-sans text-white mb-1">Procedural Avatar Souls</h2>
+                            <p className="text-forge-muted text-sm">Unique NFTs minted from high-tier world quests.</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold font-mono text-accent-cyan">{stats.ownedAvatars.length} MINTS</p>
+                        </div>
+                    </div>
+
+                    {stats.ownedAvatars.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center text-forge-muted font-mono opacity-50 py-10">
+                            <span>No Avatars Minted yet. Defeat a World Boss!</span>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {stats.ownedAvatars.map((nft) => (
+                                <div key={nft.id} className={`p-4 border rounded-xl flex flex-col ${stats.activeAvatarId === nft.id ? 'border-accent-cyan bg-accent-cyan/10' : 'border-forge-border bg-forge-elevated hover:border-forge-text'}`}>
+                                    <div className={`w-16 h-16 rounded-full mb-4 bg-gradient-to-br ${nft.bgGradient} flex items-center justify-center mx-auto border-2`}>
+                                        <span className="text-2xl">{nft.emoji}</span>
+                                    </div>
+                                    <div className="text-center mb-4 border-b border-forge-border pb-3">
+                                        <h4 className="text-sm font-bold text-white leading-tight mb-1">{nft.name}</h4>
+                                        <div className="text-[10px] font-mono text-accent-cyan font-bold">POWER RATING: {nft.powerRating}</div>
+                                    </div>
+                                    <div className="mt-auto grid grid-cols-1 gap-2">
+                                        {stats.activeAvatarId === nft.id ? (
+                                            <button onClick={() => equipAvatar("default")} className="w-full py-2 text-[10px] bg-forge-elevated hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded transition-colors font-bold tracking-widest">
+                                                UNEQUIP SOUL
+                                            </button>
+                                        ) : (
+                                            <button onClick={() => equipAvatar(nft.id)} className="w-full py-2 text-[10px] bg-forge-border hover:bg-white hover:text-black rounded transition-colors font-bold tracking-widest">
+                                                EQUIP SOUL
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
               )}
 
@@ -765,39 +981,31 @@ export default function Home() {
                                     <p className="text-xs text-forge-muted mb-6 flex-grow">{q.desc}</p>
                                     
                                     <div className="bg-forge-bg rounded p-3 mb-6 border border-forge-border font-mono text-xs">
-                                        <div className="text-[10px] text-forge-muted mb-2 tracking-widest uppercase">Requirements</div>
+                                        <div className="text-[10px] text-forge-muted mb-2 tracking-widest uppercase">Mint Variables</div>
                                         <div className={`flex justify-between mb-1 ${meetsLevel ? 'text-green-400' : 'text-red-400'}`}>
                                             <span>Level {q.reqLevel}</span>
                                             <span>{meetsLevel ? '✓' : '✗'}</span>
                                         </div>
-                                        <div className={`flex justify-between ${meetsStat ? 'text-green-400' : 'text-red-400'}`}>
+                                        <div className={`flex justify-between mb-1 ${meetsStat ? 'text-green-400' : 'text-red-400'}`}>
                                             <span>{q.reqStatAmount} {q.reqStat.toUpperCase()}</span>
                                             <span>{meetsStat ? '✓' : '✗'}</span>
                                         </div>
+                                        <div className="flex justify-between text-forge-muted border-t border-forge-border pt-1 mt-1">
+                                            <span>Minting Cost</span>
+                                            <span>50 STAMINA</span>
+                                        </div>
                                     </div>
 
-                                    {isCompleted ? (
-                                        stats.activeAvatar === q.rewardAvatar ? (
-                                            <button className="w-full py-3 bg-accent-amber/20 text-accent-amber font-bold font-mono text-xs rounded border border-accent-amber cursor-default">
-                                                SOUL EQUIPPED
-                                            </button>
-                                        ) : (
-                                            <button 
-                                                onClick={() => equipAvatar(q.rewardAvatar)}
-                                                className="w-full py-3 bg-forge-border hover:bg-white hover:text-black font-bold font-mono text-xs text-white rounded transition-colors"
-                                            >
-                                                EQUIP {q.rewardName.toUpperCase()}
-                                            </button>
-                                        )
-                                    ) : (
-                                        <button 
-                                            onClick={() => attemptQuest(q.id)}
-                                            disabled={!meetsLevel || !meetsStat}
-                                            className="w-full py-3 bg-accent-amber hover:bg-yellow-400 disabled:bg-forge-bg disabled:text-forge-muted disabled:border disabled:border-forge-border text-black font-bold font-mono text-xs rounded transition-colors"
-                                        >
-                                            ATTEMPT QUEST
-                                        </button>
-                                    )}
+                                    <button 
+                                        onClick={() => attemptQuest(q.id)}
+                                        disabled={!meetsLevel || !meetsStat || stats.stamina < 50}
+                                        className="w-full py-3 bg-accent-amber hover:bg-yellow-400 disabled:bg-forge-bg disabled:text-forge-muted disabled:border disabled:border-forge-border text-black font-bold font-mono text-xs rounded transition-colors relative group overflow-hidden"
+                                    >
+                                        <span className="relative z-10">MINT UNIQUE {q.rewardName.toUpperCase()} NFT</span>
+                                        {!meetsLevel || !meetsStat ? null : (
+                                            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform"></div>
+                                        )}
+                                    </button>
                                 </div>
                             );
                         })}
