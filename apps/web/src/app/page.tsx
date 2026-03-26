@@ -277,13 +277,42 @@ export default function Home() {
         const encodedMetadata = `data:application/json;base64,${btoa(JSON.stringify(metadata))}`;
 
         addLog(`Minting your ${nftName} to Arbitrum...`);
-        const tx = await (contract as any).mintAvatar(encodedMetadata);
+        // Overriding gasLimit to 25 million to accommodate the massive Base64 SVG payload being written to EVM State Storage!
+        const tx = await (contract as any).mintAvatar(encodedMetadata, { gasLimit: 25000000 });
         
         addLog(`Tx Submitted! Waiting for confirmation...`);
-        await tx.wait();
+        const receipt = await tx.wait();
         
+        let mintedTokenId = "0";
+        try {
+            // Find the Transfer event to extract the Token ID
+            const transferEventId = ethers.id("Transfer(address,address,uint256)");
+            const transferLog = receipt.logs.find((l: any) => l.topics[0] === transferEventId);
+            if (transferLog && transferLog.topics[3]) {
+                mintedTokenId = parseInt(transferLog.topics[3], 16).toString();
+                addLog(`Token ID Extracted: #${mintedTokenId}`);
+            }
+        } catch (e) {}
+
         addLog(`✅ Successfully Minted Core NFT!`);
-        alert(`Successfully Minted ${nftName} to ${walletAddress}!\nOpen MetaMask -> NFTs tab -> Refresh!`);
+        alert(`Successfully Minted ${nftName}!\nContract: ${contractAddress}\nToken ID: ${mintedTokenId}\n\nMetaMask will now prompt you to auto-add it to your wallet!`);
+        
+        // Auto-Import NFT into MetaMask
+        try {
+            await eth.request({
+                method: 'wallet_watchAsset',
+                params: {
+                    type: 'ERC721',
+                    options: {
+                        address: contractAddress,
+                        tokenId: mintedTokenId,
+                    },
+                },
+            });
+            addLog("NFT Successfully watched in MetaMask!");
+        } catch (e: any) {
+            console.warn("Auto-watch failed. User might need to manually import it.", e);
+        }
     } catch (e: any) {
         if (e.code === 4001 || e.code === "ACTION_REJECTED") {
             addLog(`Minting rejected by user.`);
