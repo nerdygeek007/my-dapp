@@ -217,9 +217,13 @@ export default function Home() {
       } finally {
         setIsConnecting(false);
       }
-    } else {
       alert("Please install MetaMask or a compatible Web3 wallet!");
     }
+  };
+
+  const disconnectWallet = () => {
+      setWalletAddress(null);
+      addLog("Wallet Disconnected from UI Session.");
   };
 
   const mintToWallet = async (nftName: string) => {
@@ -723,7 +727,10 @@ export default function Home() {
                  <div className="flex flex-col text-right">
                      <span className="text-[10px] font-mono text-forge-muted tracking-widest">NETWORK</span>
                      {walletAddress ? (
-                        <span className="font-bold text-accent-cyan font-mono text-xs">ARB SEPOLIA</span>
+                        <div className="flex items-center gap-2">
+                            <span className="font-bold text-accent-cyan font-mono text-xs">ARB SEPOLIA</span>
+                            <button onClick={disconnectWallet} title="Disconnect Wallet" className="text-[10px] text-red-500 hover:text-red-400 bg-red-500/10 px-1 rounded">✕</button>
+                        </div>
                      ) : (
                         <button onClick={connectWallet} className="font-bold text-accent-cyan hover:text-white font-mono text-xs transition-colors">CONNECT WALLET</button>
                      )}

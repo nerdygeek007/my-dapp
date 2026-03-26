@@ -48,6 +48,7 @@ sol_storage! {
     #[entrypoint]
     struct DynamicSoulboundRPG {
         mapping(uint256 => CharacterStats) characters;
+        mapping(uint256 => string) token_uris;
         
         #[borrow]
         Erc721<DsiParams> erc721;
@@ -84,6 +85,29 @@ impl DynamicSoulboundRPG {
         char_stats.char_class.set(0); // Novice
 
         Ok(())
+    }
+
+    /// Mints a procedurally generated Avatar NFT directly with JSON Base64 metadata
+    pub fn mint_avatar(&mut self, uri: String) -> Result<(), Vec<u8>> {
+        let minter = msg::sender();
+        let new_token_id = self.erc721.total_supply.get();
+        
+        // Use the native ERC721 mint without throwing Soulbound restrictions because from=0x0
+        self.erc721.mint(minter).map_err(|_| Vec::new())?;
+
+        // Save the massive Base64 token URI string natively to the blockchain map
+        let mut uri_setter = self.token_uris.setter(new_token_id);
+        uri_setter.set_str(uri);
+
+        Ok(())
+    }
+
+    /// Expose the standard ERC721 tokenURI for MetaMask / OpenSea rendering
+    #[selector(name = "tokenURI")]
+    pub fn token_uri(&self, token_id: U256) -> Result<String, Vec<u8>> {
+        self.erc721.owner_of(token_id).map_err(|_| Vec::new())?; // Validates token exists
+        let uri = self.token_uris.get(token_id).get_string();
+        Ok(uri)
     }
 
     /// Train a specific stat (Costs Stamina, grants XP)
