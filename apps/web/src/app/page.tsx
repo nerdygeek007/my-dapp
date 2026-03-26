@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
+import { renderToString } from 'react-dom/server';
 import AvatarContractJSON from '../../hardhat-temp/artifacts/contracts/DynamicAvatar.sol/DynamicAvatar.json';
 import { AvatarRenderer, AvatarTraits } from "../components/AvatarRenderer";
 
@@ -228,11 +229,12 @@ export default function Home() {
       addLog("Wallet Disconnected from UI Session.");
   };
 
-  const mintToWallet = async (nftName: string) => {
+  const mintToWallet = async (nftPayload: any) => {
     if (!walletAddress) {
         alert("Please connect your Web3 Wallet first!");
         return;
     }
+    const nftName = nftPayload.name;
     try {
         addLog(`Requesting MetaMask to Deploy/Mint ${nftName}...`);
         const eth = (window as any).ethereum;
@@ -256,15 +258,20 @@ export default function Home() {
             contract = new ethers.Contract(contractAddress, AvatarContractJSON.abi, signer);
         }
 
-        // Ensure the NFT renders visually in MetaMask
+        addLog("Rendering Procedural SVG for Metadata...");
+        const svgString = renderToString(<AvatarRenderer baseType={nftPayload.baseType} traits={nftPayload.traits} size={500} isMythic={nftPayload.isMythic} />);
+        const svgBase64 = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svgString)))}`;
+
+        // Provide 100% On-Chain TokenURI Base64 Metadata
         const metadata = {
             name: nftName,
             description: "A Generative Dynamic Soulbound Identity.",
-            // Real functioning IPFS gateway for visual representation inside Metamask
-            image: "https://ipfs.io/ipfs/bafkreicbmua7lw27etb7l2fxyc5pczfhz2eyly2cifkrmtw3rnh3kfwou4",
+            image: svgBase64,
             attributes: [
-               { trait_type: "Class", value: nftName },
-               { trait_type: "Network", value: "Arbitrum" }
+               { trait_type: "Class", value: nftPayload.traits.base },
+               { trait_type: "Aura", value: nftPayload.traits.aura },
+               { trait_type: "Weapon", value: nftPayload.traits.weapon },
+               { trait_type: "Power Rating", value: nftPayload.powerRating.toString() }
             ]
         };
         const encodedMetadata = `data:application/json;base64,${btoa(JSON.stringify(metadata))}`;
@@ -1065,7 +1072,7 @@ export default function Home() {
                                             </button>
                                         )}
                                         <button 
-                                            onClick={() => mintToWallet(nft.name)}
+                                            onClick={() => mintToWallet(nft)}
                                             className="w-full py-2 mt-1 text-[10px] bg-gradient-to-r from-accent-purple to-accent-cyan text-white hover:opacity-80 rounded transition-all font-bold tracking-widest shadow-md flex items-center justify-center gap-2"
                                         >
                                             <span>📤</span> MINT TO WALLET
