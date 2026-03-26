@@ -654,7 +654,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-grid-magic flex items-center justify-center p-6 relative">
       
-      {!stats.minted ? (
+      {!walletAddress || !stats.minted ? (
         // Landing / Mint UI
         <div className="glass-panel p-10 rounded-2xl max-w-lg w-full text-center animate-glow relative overflow-hidden">
           
