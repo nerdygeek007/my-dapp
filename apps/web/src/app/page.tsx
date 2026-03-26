@@ -27,6 +27,7 @@ interface CharacterStats {
   vitality: number;
   stamina: number;
   charClass: CharacterClass;
+  subClass: string | null;
   minted: boolean;
   inventory: number[];
   equippedWeapon: number | null;
@@ -42,6 +43,8 @@ export const ITEMS = {
   3: { name: "Leather Tunic", type: "armor", bonusStr: 0, bonusAgi: 1, bonusInt: 0, bonusVit: 2, rarity: "Common" },
   4: { name: "Mythic Blade", type: "weapon", bonusStr: 20, bonusAgi: 5, bonusInt: 0, bonusVit: 0, rarity: "Legendary" },
   5: { name: "Shadow Cloak", type: "armor", bonusStr: 0, bonusAgi: 15, bonusInt: 0, bonusVit: 5, rarity: "Rare" },
+  6: { name: "The Silent Edge", type: "weapon", bonusStr: 5, bonusAgi: 25, bonusInt: 10, bonusVit: 0, rarity: "Mythical" },
+  7: { name: "Wraith Hood", type: "armor", bonusStr: 0, bonusAgi: 10, bonusInt: 5, bonusVit: 8, rarity: "Epic" },
 };
 
 const INITIAL_STATS: CharacterStats = {
@@ -53,6 +56,7 @@ const INITIAL_STATS: CharacterStats = {
   vitality: 10,
   stamina: 100,
   charClass: "Novice",
+  subClass: null,
   minted: false,
   inventory: [],
   equippedWeapon: null,
@@ -259,7 +263,7 @@ export default function Home() {
         }
 
         addLog("Rendering Procedural SVG for Metadata...");
-        const svgString = renderToString(<AvatarRenderer baseType={nftPayload.baseType} traits={nftPayload.traits} size={500} isMythic={nftPayload.isMythic} />);
+        const svgString = renderToString(<AvatarRenderer baseType={nftPayload.baseType} traits={nftPayload.traits} size={500} isMythic={nftPayload.isMythic} level={stats.level} />);
         const svgBase64 = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svgString)))}`;
 
         // Provide 100% On-Chain TokenURI Base64 Metadata
@@ -364,8 +368,9 @@ export default function Home() {
   };
 
   const explore = () => {
-    if (stats.stamina < 20) {
-      addLog("Not enough stamina to explore!");
+    const staminaCost = stats.equippedWeapon === 6 ? 15 : 20;
+    if (stats.stamina < staminaCost) {
+      addLog(`Not enough stamina to explore! (Cost: ${staminaCost})`);
       return;
     }
 
@@ -379,7 +384,7 @@ export default function Home() {
     if (isWin) {
         addLog(`Encounter Won! Gained ${xpGain} XP.`);
         if (isLootDrop) {
-            const possibleItems = [1, 2, 3, 4, 5];
+            const possibleItems = [1, 2, 3, 4, 5, 6, 7];
             droppedItemId = possibleItems[Math.floor(Math.random() * possibleItems.length)];
             droppedItemData = ITEMS[droppedItemId as keyof typeof ITEMS];
             addLog(`🎊 LOOT DROP! Found: ${droppedItemData.name} (${droppedItemData.rarity})`);
@@ -389,7 +394,8 @@ export default function Home() {
     }
     
     setStats(prev => {
-      const newStats = { ...prev, stamina: prev.stamina - 20 };
+      const staminaCost = prev.equippedWeapon === 6 ? 15 : 20;
+      const newStats = { ...prev, stamina: prev.stamina - staminaCost };
       
       if (isWin) {
         newStats.xp += xpGain;
@@ -516,7 +522,14 @@ export default function Home() {
 
             // Opponent Attack
             let oppHitChance = 0.7 + (oppAgi - pAgi) * 0.05;
-            if (Math.random() < oppHitChance) {
+            
+            // SHADOW ASSASSIN SPECIAL: Shroud of the Unseen (Every 4th turn auto-dodge)
+            const isShadowAssassin = stats.charClass === "Rogue" || (stats.activeAvatarId !== "default" && stats.ownedAvatars.find(a => a.id === stats.activeAvatarId)?.baseType === "shadow_assassin");
+            const autoDodge = isShadowAssassin && (round % 4 === 0);
+
+            if (autoDodge) {
+                combatLog.push(`Round ${round}: 🌫️ SHROUD ACTIVATED! You phased through the attack!`);
+            } else if (Math.random() < oppHitChance) {
                 let dmg = Math.floor(oppStr * (1 + Math.random() * 0.5));
                 playerHP -= dmg;
                 combatLog.push(`Round ${round}: Opponent hits you for ${dmg} DMG! (Your HP: ${Math.max(0, playerHP)})`);
@@ -701,7 +714,7 @@ export default function Home() {
     if (stats.activeAvatarId !== "default") {
         const found = stats.ownedAvatars.find(a => a.id === stats.activeAvatarId);
         if (found) {
-            return <AvatarRenderer baseType={found.baseType} traits={found.traits} size={128} isMythic={found.isMythic} className="mb-6" />;
+            return <AvatarRenderer baseType={found.baseType} traits={found.traits} size={128} isMythic={found.isMythic} level={stats.level} className="mb-6" />;
         }
     }
 
@@ -716,7 +729,7 @@ export default function Home() {
         weather: "none",
         familiar: "none"
     };
-    return <AvatarRenderer baseType="default" traits={fallbackTraits} size={128} className="mb-6" />;
+    return <AvatarRenderer baseType="default" traits={fallbackTraits} size={128} level={stats.level} className="mb-6" />;
   };
 
   // ---------------- Main Render ----------------
@@ -1084,7 +1097,7 @@ export default function Home() {
                             {stats.ownedAvatars.map((nft) => (
                                 <div key={nft.id} className={`p-4 border rounded-xl flex flex-col ${stats.activeAvatarId === nft.id ? 'border-accent-cyan bg-accent-cyan/10' : 'border-forge-border bg-forge-elevated hover:border-forge-text'} transition-colors relative group`}>
                                     <div className="mb-4 flex justify-center">
-                                        <AvatarRenderer baseType={nft.baseType} traits={nft.traits} size={100} isMythic={nft.isMythic} />
+                                        <AvatarRenderer baseType={nft.baseType} traits={nft.traits} size={100} isMythic={nft.isMythic} level={stats.level} />
                                     </div>
                                     <div className="text-center mb-4 border-b border-forge-border pb-3">
                                         <h4 className="text-sm font-bold text-white leading-tight mb-1">{nft.name}</h4>

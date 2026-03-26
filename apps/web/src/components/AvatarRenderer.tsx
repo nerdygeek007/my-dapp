@@ -17,9 +17,10 @@ interface Props {
   size?: number;
   className?: string;
   isMythic?: boolean;
+  level?: number;
 }
 
-export const AvatarRenderer: React.FC<Props> = ({ baseType, traits, size = 100, className = '', isMythic = false }) => {
+export const AvatarRenderer: React.FC<Props> = ({ baseType, traits, size = 100, className = '', isMythic = false, level = 1 }) => {
   const viewBox = "0 0 100 100";
   const center = 50;
 
@@ -29,7 +30,17 @@ export const AvatarRenderer: React.FC<Props> = ({ baseType, traits, size = 100, 
       case 'smooth': return <circle cx={center} cy={center} r={44} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={6} />;
       case 'spiked': return <path d="M50 2 L55 15 L75 10 L65 25 L85 35 L70 45 L85 55 L65 65 L75 80 L55 75 L50 90 L45 75 L25 80 L35 65 L15 55 L30 45 L15 35 L35 25 L25 10 L45 15 Z" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth={2} />;
       case 'runic': return <circle cx={center} cy={center} r={46} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={2} strokeDasharray="5, 15, 10, 5" className="animate-[spin_20s_linear_infinite]" />;
-      default: return null;
+      default: 
+        // Shadow Assassin Evolution: Shadow Tendrils at Level 25+
+        if (baseType === 'shadow_assassin' && (level || 0) >= 25) {
+          return (
+            <g className="animate-pulse opacity-40">
+                <path d="M50 5 Q 70 0 90 20 T 70 80 Q 50 100 30 80 T 10 20 Q 30 0 50 5" fill="none" stroke={traits.primaryColor} strokeWidth={1} />
+                <path d="M50 15 Q 65 10 80 25 T 65 75 Q 50 90 35 75 T 20 25 Q 35 10 50 15" fill="none" stroke={traits.primaryColor} strokeWidth={0.5} strokeDasharray="2,4" />
+            </g>
+          );
+        }
+        return null;
     }
   };
 
@@ -118,6 +129,13 @@ export const AvatarRenderer: React.FC<Props> = ({ baseType, traits, size = 100, 
         <rect x={38} y={30} width={24} height={6} fill="#000" />
         <circle cx={43} cy={33} r={1.5} fill="#fff" />
         <circle cx={57} cy={33} r={1.5} fill="#fff" />
+        {/* Shadow Assassin Evolution: Void-tears at Level 10+ */}
+        {(level || 0) >= 10 && (
+           <g>
+              <rect x={42} y={35} width={1} height={6} fill="#60a5fa" opacity={0.6} />
+              <rect x={57} y={35} width={1} height={6} fill="#60a5fa" opacity={0.6} />
+           </g>
+        )}
         {/* Assassin Weapon */}
         {traits.weapon === 'shuriken' && <path d="M75 60 L80 65 L90 65 L85 70 L90 80 L80 75 L75 85 L70 75 L60 80 L65 70 L60 65 L70 65 Z" fill="#94a3b8" />}
         {traits.weapon === 'kunai' && <path d="M85 50 L88 65 L85 70 L82 65 Z" fill="#cbd5e1" />}
