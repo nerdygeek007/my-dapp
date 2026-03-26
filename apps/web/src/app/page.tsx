@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { ethers } from 'ethers';
+import AvatarContractJSON from '../../hardhat-temp/artifacts/contracts/DynamicAvatar.sol/DynamicAvatar.json';
 import { AvatarRenderer, AvatarTraits } from "../components/AvatarRenderer";
 
 // Mock Data structure reflecting our Rust Stylus Contract
@@ -232,20 +234,51 @@ export default function Home() {
         return;
     }
     try {
-        addLog(`Requesting Wallet Signature to Claim ${nftName}...`);
+        addLog(`Requesting MetaMask to Deploy/Mint ${nftName}...`);
         const eth = (window as any).ethereum;
-        // Using personal_sign bypassing Gas/ETH requirements for the demo!
-        const msg = `0x${Buffer.from(`I authorize the minting of ${nftName} to my Dynamic Soulbound Collection.`, 'utf8').toString('hex')}`;
         
-        const signature = await eth.request({
-            method: 'personal_sign',
-            params: [msg, walletAddress]
-        });
+        const provider = new ethers.BrowserProvider(eth);
+        const signer = await provider.getSigner();
+
+        let contractAddress = localStorage.getItem('dsi_avatar_contract');
+        let contract;
+
+        if (!contractAddress) {
+            addLog("Deploying Avatar Smart Contract to Arbitrum Sepolia...");
+            const factory = new ethers.ContractFactory(AvatarContractJSON.abi, AvatarContractJSON.bytecode, signer);
+            contract = await factory.deploy();
+            addLog("Waiting for block confirmation...");
+            await contract.waitForDeployment();
+            contractAddress = await contract.getAddress();
+            localStorage.setItem('dsi_avatar_contract', contractAddress);
+            addLog(`✅ Contract Deployed at ${contractAddress}`);
+        } else {
+            contract = new ethers.Contract(contractAddress, AvatarContractJSON.abi, signer);
+        }
+
+        // Ensure the NFT renders visually in MetaMask
+        const metadata = {
+            name: nftName,
+            description: "A Generative Dynamic Soulbound Identity.",
+            // Real functioning IPFS gateway for visual representation inside Metamask
+            image: "https://ipfs.io/ipfs/bafkreicbmua7lw27etb7l2fxyc5pczfhz2eyly2cifkrmtw3rnh3kfwou4",
+            attributes: [
+               { trait_type: "Class", value: nftName },
+               { trait_type: "Network", value: "Arbitrum" }
+            ]
+        };
+        const encodedMetadata = `data:application/json;base64,${btoa(JSON.stringify(metadata))}`;
+
+        addLog(`Minting your ${nftName} to Arbitrum...`);
+        const tx = await (contract as any).mintAvatar(encodedMetadata);
         
-        addLog(`✅ Successfully Claimed Signature! Hash: ${signature.substring(0, 12)}...`);
-        alert(`Cryptographic Signature Claimed!\n${signature.substring(0, 30)}...`);
+        addLog(`Tx Submitted! Waiting for confirmation...`);
+        await tx.wait();
+        
+        addLog(`✅ Successfully Minted Core NFT!`);
+        alert(`Successfully Minted ${nftName} to ${walletAddress}!\nOpen MetaMask -> NFTs tab -> Refresh!`);
     } catch (e: any) {
-        if (e.code === 4001) {
+        if (e.code === 4001 || e.code === "ACTION_REJECTED") {
             addLog(`Minting rejected by user.`);
         } else {
             console.error("Minting failed", e);
